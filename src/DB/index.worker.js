@@ -1,77 +1,77 @@
 /* eslint-disable no-restricted-globals */
-import { createRxDatabase } from "rxdb";
-
-/**
- * For browsers, we use the dexie.js based storage
- * which stores data in IndexedDB in the browser.
- * In other JavaScript runtimes, we can use different storages:
- * @link https://rxdb.info/rx-storage.html
- */
-import { getRxStorageDexie } from "rxdb/plugins/storage-dexie";
-import {
-  replicateP2P,
-  getConnectionHandlerSimplePeer,
-} from "rxdb/plugins/replication-p2p";
-import { apartSchema, contractSchema, visitSchema } from "./schema";
+import { decode, encode } from "cbor-x";
+import { db } from "./db.index";
 
 const mapFuncs = {
-  db: undefined,
-  get init() {
-    return async () => {
-      // create a database
-      const db = await createRxDatabase({
-        name: "eventsdb", // the name of the database
-        storage: getRxStorageDexie(),
-      });
+  sync: (data) => {
+    const _data = decode(data);
+    db.contractor.bulkPut(_data.contractor);
+    db.apartment.bulkPut(_data.apartment);
+    db.m2m.bulkPut(_data.m2m);
+  },
+  reqSync: async () => {
+    return {
+      type: "sync",
+      data: {
+        contractor: await db.contractor.toArray(),
+        apartment: await db.apartment.toArray(),
+        m2m: await db.m2m.toArray(),
+      },
+    };
+  },
+  put: (data) => {
+    const _data = decode(data);
 
-      // add collections
-      await db.addCollections({
-        contractor: {
-          schema: contractSchema,
-        },
-        apartment: {
-          schema: apartSchema,
-        },
-        visitlog: {
-          schema: visitSchema,
-        },
-      });
-      this.db = db;
-    };
+    db.table(_data.table).put(_data.row);
   },
-  get connect() {
-    return async () => {
-      const replicationPool = await replicateP2P({
-        collection: "contractor",
-        // The topic is like a 'room-name'. All clients with the same topic
-        // will replicate with each other. In most cases you want to use
-        // a different topic string per user.
-        topic: "my-users-pool",
-        /**
-         * You need a collection handler to be able to create WebRTC connections.
-         * Here we use the simple peer handler which uses the 'simple-peer' npm library.
-         * To learn how to create a custom connection handler, read the source code,
-         * it is pretty simple.
-         */
-        connectionHandlerCreator: getConnectionHandlerSimplePeer(
-          "wss://example.com:8080",
-          // only in Node.js, we need the wrtc library
-          // because Node.js does not contain the WebRTC API.
-          require("wrtc")
-        ),
-        pull: {},
-        push: {},
-      });
-      replicationPool.error$.subscribe((err) => {
-        /* ... */
-        console.error(err);
-      });
-      replicationPool.cancel();
-    };
+  init: async () => {
+    await db.contractor.bulkPut([
+      { phone: "01025765914", name: "김다범" },
+      { phone: "01027725914", name: "김다범2" },
+    ]);
+    await db.apartment.bulkPut([
+      {
+        building_room: "101-101",
+        building: "101",
+        room: "101",
+        password: [1111, 2222],
+      },
+      {
+        building_room: "101-102",
+        building: "101",
+        room: "102",
+        password: [3333, 4444],
+      },
+    ]);
+    await db.m2m.bulkPut([
+      { id: 1, contractor_id: "01025765914", apartment_id: "101-101" },
+      { id: 2, contractor_id: "01025765914", apartment_id: "101-102" },
+      { id: 3, contractor_id: "01027725914", apartment_id: "101-102" },
+    ]);
+
+    return "done";
+
+    //   const ws = new WebSocket("wss://localhost:8001/ws");
   },
+  // get connect() {
+  //   return async ({ site, topic }) => {
+  //     console.log(site, topic);
+  //     this.handler = getConnectionHandlerSimplePeer(site, topic, this.mapper);
+  //   };
+  // },
+  // get destroy() {
+  //   this.handler.destroy?.();
+  //   return undefined;
+  // },
+  // get send() {
+  //   this.handler.send?.();
+  //   return undefined;
+  // },
 };
 
-self.onmessage = async ({ id, action, params }) => {
-  const result = await mapFuncs[action](params);
-  self.postMessage({ id, result });
+self.onmessage = async ({ data }) => {
+  const { id, action, peerId, data: _data } = data;
+  const result = await mapFuncs[action](_data);
+  const msg = { id, peerId, result: encode(result) };
+  self.postMessage(msg, [msg.result.buffer]);
 };

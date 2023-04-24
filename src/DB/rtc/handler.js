@@ -1,137 +1,126 @@
-import { Subject } from "rxjs";
-import {
-  getFromMapOrThrow,
-  PROMISE_RESOLVE_VOID,
-  randomCouchString,
-} from "rxdb/plugins/utils";
-// import type {
-//     P2PConnectionHandler,
-//     P2PConnectionHandlerCreator,
-//     P2PMessage,
-//     P2PPeer,
-//     PeerWithMessage,
-//     PeerWithResponse
-// } from './p2p-types';
-
-import { default as Peer } from "simple-peer";
-import { newRxError } from "rxdb";
+/* eslint-disable no-restricted-globals */
+import Peer from "simple-peer";
 import { fireStore } from "./signal";
 import {
   collection,
+  deleteDoc,
   doc,
-  getDoc,
   getDocs,
   onSnapshot,
   setDoc,
 } from "firebase/firestore";
 import { nanoid } from "nanoid";
+import { encode, decode } from "cbor-x";
+import { useDBStatus } from "../statusStore";
 // import { RxError, RxTypeError } from 'rxdb/types';
 // import { newRxError } from 'rxdb/rx-error';
 
 /**
  * Returns a connection handler that uses simple-peer and the signaling server.
  */
-export function getConnectionHandlerSimplePeer(site) {
-  const creator = (options) => {
-    // const socket = undefined;
+export async function getConnectionHandlerSimplePeer(site, topic, workerPipe) {
+  const peerId = nanoid();
 
-    const peerId = nanoid();
-    // socket.emit("join", {
-    //   room: options.topic,
-    //   peerId,
-    // });
-    const _room = collection(fireStore, "ecole", `${site}`, options.topic);
-    const _peers = collection(_room, peerId, "peers");
-    // setDoc(_doc, null);
+  const _room = collection(fireStore, "ecole", `${site}`, topic);
+  const _peers = collection(_room, peerId, "peers");
 
-    const connect$ = new Subject();
-    const disconnect$ = new Subject();
-    const message$ = new Subject();
-    const response$ = new Subject();
-    const error$ = new Subject();
+  const peers = new Map();
 
-    const peers = new Map();
-    
-    const setPeer = (remotePeerId, offer) => {
-      if (remotePeerId === peerId || peers.has(remotePeerId)) return;
-      const newPeer = new Peer({
-        initiator: !offer,
-        trickle: false,
-      });
-      peers.set(remotePeerId, newPeer);
+  const setPeer = (remotePeerId, offer) => {
+    console.log(remotePeerId, offer, peerId);
+    if (remotePeerId === peerId || peers.has(remotePeerId)) return;
+    const newPeer = new Peer({
+      initiator: !offer,
+      trickle: false,
+    });
+    peers.set(remotePeerId, newPeer);
 
-      newPeer.on("data", (messageOrResponse) => {
-        messageOrResponse = JSON.parse(messageOrResponse.toString());
-        // console.log('got a message from peer3: ' + messageOrResponse)
-        if (messageOrResponse.result) {
-          response$.next({
-            peer: newPeer,
-            response: messageOrResponse,
-          });
-        } else {
-          message$.next({
-            peer: newPeer,
-            message: messageOrResponse,
-          });
-        }
-      });
-      newPeer.on("signal", (signal) => {
-        setDoc(doc(_room, remotePeerId, "peers", peerId), signal);
-      });
-
-      newPeer.on("error", (error) => {
-        error$.next(
-          newRxError("RC_P2P_PEER", {
-            error,
-          })
-        );
-      });
-
-      newPeer.on("connect", () => {
-        connect$.next(newPeer);
-      });
-    };
-
-    //init alreadt connection
-    getDocs(_room).then((_docs) =>
-      _docs.forEach((__doc) => {
-        setPeer(__doc.id);
-      })
-    );
-
-    const unsubscribeFirestore = onSnapshot(_peers, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        // const _func = evtTypeFunc[change.type];
-        if (change.type === "added") {
-          const remotePeerId = change.doc.id;
-          const _peer = peers.has(remotePeerId);
-          if (!!_peer) _peer.signal(change.doc.data());
-          else setPeer(change.doc.id, change.doc.data());
-        } else if (change.type === "modified") {
-        }
-      });
+    newPeer.on("data", (resp) => {
+      resp = decode(resp);
+      console.log(resp);
+      // console.log('got a message from peer3: ' + messageOrResponse)
+      const msg = {
+        id: Date.now(),
+        action: resp.type,
+        peerId: resp.peerId,
+        data: resp.data ? encode(resp.data) : undefined,
+      };
+      workerPipe(msg, msg.data ? [msg.data.buffer] : undefined);
+    });
+    newPeer.on("signal", (signal) => {
+      setDoc(doc(_room, remotePeerId, "peers", peerId), signal);
     });
 
-    const handler = {
-      error$,
-      connect$,
-      disconnect$,
-      message$,
-      response$,
-      async send(peer, message) {
-        await peer.send(JSON.stringify(message));
-      },
-      destroy() {
-        unsubscribeFirestore();
-        error$.complete();
-        connect$.complete();
-        disconnect$.complete();
-        message$.complete();
-        response$.complete();
-        return PROMISE_RESOLVE_VOID;
-      },
-    };
-    return handler;
+    newPeer.on("error", (error) => {
+      useDBStatus.getState().setConnectState((isMaster, isConnect) => {
+        if (isMaster) {
+          isConnect.delete(remotePeerId);
+          return new Set(isConnect);
+        }
+        return false;
+      });
+    });
+    newPeer.on("close", () => {
+      deleteDoc(doc(_room, peerId));
+    });
+
+    newPeer.on("connect", () => {
+      useDBStatus.getState().setConnectState((isMaster, isConnect) => {
+        if (!isMaster) {
+          newPeer.send(encode({ peerId, type: "reqSync" }));
+          unsubscribeFirestore();
+          deleteDoc(doc(_room, peerId, "peers", remotePeerId));
+          deleteDoc(doc(_room, peerId));
+          deleteDoc(doc(_room, remotePeerId, "peers", peerId));
+        }
+        return isMaster ? new Set([...isConnect, remotePeerId]) : true;
+      });
+    });
+    if (offer) newPeer.signal(offer);
   };
-  return creator;
+
+  //init alreadt connection
+  await getDocs(_room).then(({ docs: _docs }) => {
+    console.log("DOCS", _docs);
+    const isMaster = (_docs?.length ?? 0) === 0;
+    useDBStatus.getState().setMaster(isMaster);
+    if (!isMaster) {
+      _docs.forEach((__doc) => {
+        if (__doc.data()?.isMaster) setPeer(__doc.id);
+      });
+    } else {
+      setDoc(doc(_room, peerId), { isMaster: true });
+      workerPipe({ id: Date.now(), action: "init" });
+    }
+  });
+
+  const unsubscribeFirestore = onSnapshot(_peers, (snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      console.log(change.doc.id, change.doc.data());
+      // const _func = evtTypeFunc[change.type];
+      if (change.type === "added") {
+        const remotePeerId = change.doc.id;
+        const _peer = peers.get(remotePeerId);
+        if (!!_peer) _peer.signal(change.doc.data());
+        else setPeer(change.doc.id, change.doc.data());
+      } else if (change.type === "modified") {
+      }
+    });
+  });
+
+  const handler = {
+    send(message) {
+      const msg = !message.buffer ? encode(message) : message;
+      for (let peer of peers.values()) {
+        peer.send(msg);
+      }
+    },
+    sendPeer(message, peerId) {
+      peers.get(peerId)?.send(!message.buffer ? encode(message) : message);
+    },
+    destroy() {
+      unsubscribeFirestore();
+    },
+  };
+  return handler;
 }

@@ -1,5 +1,5 @@
 // const lodashCloneDeep = require("lodash/cloneDeep");
-
+const { ProvidePlugin } = require("webpack");
 module.exports = {
   webpack: function override(config, env) {
     // const isEnvDevelopment = env === "development";
@@ -29,7 +29,16 @@ module.exports = {
     // ]);
 
     // config.module.rules.push(workerLoader);
-
+    config.resolve.fallback = {
+      util: require.resolve("util/"),
+      buffer: require.resolve("buffer"),
+    };
+    config.plugins.push(
+      new ProvidePlugin({
+        process: "process/browser",
+        Buffer: ["buffer", "Buffer"],
+      })
+    );
     return config;
   },
 };

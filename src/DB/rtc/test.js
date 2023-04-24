@@ -1,62 +1,115 @@
-import { Button, ButtonGroup, TextField } from "@mui/material";
+import {
+  Button,
+  ButtonGroup,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  TextField,
+  styled,
+} from "@mui/material";
 import { createPeerConnection } from "./testrtc";
-import { useCallback, useRef } from "react";
-
+import { Fragment, useCallback, useRef, useState } from "react";
+import { db } from "../db.index";
+import { handler } from "../../App";
+const StyledDiv = styled("div")({
+  // display: "flex",
+  // flexDirection: "row",
+  flex: 1,
+  overflow: "hidden auto",
+});
 export function Main() {
-  const ref = useRef();
-  const peerConnectionRef = useRef();
-  const onChannelOpen = useCallback(() => console.log("SIGNAL CONNECTED"), []);
-
-  const onMessageReceived = useCallback((messageString) => {
-    try {
-      console.log(messageString);
-    } catch (error) {
-      console.error(error);
-    }
-  }, []);
-
-  const startAsHost = useCallback(async () => {
-    if (typeof mode !== "undefined") return;
-
-    peerConnectionRef.current = await createPeerConnection({
-      iceServers: [],
-      onMessageReceived,
-      onChannelOpen,
-    });
-    ref.current.value = peerConnectionRef.current.localDescription;
-  }, []);
-
-  const setRemoteConnectionDescription = useCallback(() => {
-    const connectionDescription = ref.current.value;
-    if (!peerConnectionRef.current) return;
-
-    peerConnectionRef.current.setAnswerDescription(connectionDescription);
-  }, []);
-
-  const startAsSlave = useCallback(async () => {
-    const connectionDescription = ref.current.value;
-    console.log(connectionDescription);
-    if (typeof mode !== "undefined") return;
-
-    peerConnectionRef.current = await createPeerConnection({
-      iceServers: [],
-      remoteDescription: connectionDescription,
-      onMessageReceived,
-      onChannelOpen,
-    });
-    console.log(
-      "peerConnectionRef.current.localDescription",
-      peerConnectionRef.current.localDescription
-    );
-    ref.current.value = peerConnectionRef.current.localDescription;
-  }, []);
-
+  const [aparts, setAparts] = useState([]);
+  const phoneRef = useRef();
+  const nameRef = useRef();
+  const buildingRef = useRef();
+  const roomRef = useRef();
+  const passwordRef = useRef();
+  async function handleSearch(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const _phone = new FormData(e.target).get("phone");
+    const rows = await Promise.all([
+      db.contractor.get(_phone),
+      db.m2m
+        .where("contractor_id")
+        .equals(_phone)
+        .toArray()
+        .then(
+          async (_ids) =>
+            await Promise.all(
+              _ids.map((_id) => db.apartment.get(_id.apartment_id))
+            )
+        ),
+    ]);
+    const _contractor = rows[0];
+    phoneRef.current.value = _contractor.phone;
+    nameRef.current.value = _contractor.name;
+    setAparts(rows[1]);
+  }
+  async function handleUpdateContractor(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    db.contractor
+      .update(phoneRef.current.value, { name: nameRef.current.value })
+      .then((update) => {
+        if (update) {
+          handler.send({
+            type: "put",
+            data: {
+              table: "contractor",
+              row: {
+                phone: phoneRef.current.value,
+                name: nameRef.current.value,
+              },
+            },
+          });
+        }
+      });
+  }
   return (
-    <ButtonGroup>
-      <Button onClick={startAsHost}>New</Button>
-      <Button onClick={setRemoteConnectionDescription}>set</Button>
-      <Button onClick={startAsSlave}>join</Button>
-      <TextField multiline inputRef={ref} />
-    </ButtonGroup>
+    <StyledDiv>
+      <List className="form">
+        <form onSubmit={handleSearch}>
+          <ListItem>
+            <TextField label="phone" name="phone" />
+          </ListItem>
+          <ListItem type="submit">
+            <Button variant="contained" type="submit">
+              search
+            </Button>
+          </ListItem>
+        </form>
+        <form onSubmit={handleUpdateContractor}>
+          <ListItem>
+            <TextField label="phone" inputRef={phoneRef} />
+          </ListItem>
+          <ListItem>
+            <TextField label="name" inputRef={nameRef} />
+          </ListItem>
+          <ListItem type="submit">
+            <Button variant="contained" type="submit">
+              update
+            </Button>
+          </ListItem>
+        </form>
+        {aparts.map((row) => (
+          <ListItemButton>
+            <ListItemText primary={row.building_room} />
+          </ListItemButton>
+        ))}
+        <form onSubmit={() => {}}>
+          <TextField label="building" inputRef={buildingRef} />
+          <TextField label="room" inputRef={roomRef} />
+          <TextField label="password" inputRef={passwordRef} />
+        </form>
+      </List>
+
+      {/* <ButtonGroup>
+        <Button onClick={setRemoteConnectionDescription}>set</Button>
+        <Button onClick={startAsSlave}>join</Button>
+        <TextField multiline inputRef={ref} />
+      </ButtonGroup> */}
+    </StyledDiv>
   );
 }
