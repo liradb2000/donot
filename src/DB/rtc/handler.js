@@ -11,17 +11,24 @@ import {
 } from "firebase/firestore";
 import { nanoid } from "nanoid";
 import { encode, decode } from "cbor-x";
-import { useDBStatus } from "../statusStore";
+import { useNetworkStatus } from "../../store";
+// import { useDBStatus } from "../statusStore";
 // import { RxError, RxTypeError } from 'rxdb/types';
 // import { newRxError } from 'rxdb/rx-error';
 
 /**
  * Returns a connection handler that uses simple-peer and the signaling server.
  */
-export async function getConnectionHandlerSimplePeer(site, topic, workerPipe) {
+export async function getConnectionHandlerSimplePeer(
+  site,
+  topic,
+  asKiosk = false,
+  workerPipe
+) {
   const peerId = nanoid();
 
-  const _room = collection(fireStore, "ecole", `${site}`, topic);
+  const _site = doc(fireStore, "ecole", `${site}`);
+  const _room = collection(_site, topic);
   const _peers = collection(_room, peerId, "peers");
 
   const peers = new Map();
@@ -41,9 +48,13 @@ export async function getConnectionHandlerSimplePeer(site, topic, workerPipe) {
       // console.log('got a message from peer3: ' + messageOrResponse)
       const msg = {
         id: Date.now(),
-        action: resp.type,
+        action: resp.action,
         peerId: resp.peerId,
-        data: resp.data ? encode(resp.data) : undefined,
+        data: resp.data
+          ? resp.data.buffer
+            ? resp.data
+            : encode(resp.data)
+          : undefined,
       };
       workerPipe(msg, msg.data ? [msg.data.buffer] : undefined);
     });
@@ -52,47 +63,59 @@ export async function getConnectionHandlerSimplePeer(site, topic, workerPipe) {
     });
 
     newPeer.on("error", (error) => {
-      useDBStatus.getState().setConnectState((isMaster, isConnect) => {
-        if (isMaster) {
-          isConnect.delete(remotePeerId);
-          return new Set(isConnect);
-        }
-        return false;
+      useNetworkStatus.getState().setPeers((CurrentPeers) => {
+        return CurrentPeers.delete(remotePeerId);
       });
     });
     newPeer.on("close", () => {
-      deleteDoc(doc(_room, peerId));
+      useNetworkStatus.getState().setPeers((CurrentPeers, isKiosk) => {
+        if (isKiosk || CurrentPeers.size === 0) deleteDoc(doc(_room, peerId));
+        return CurrentPeers.delete(remotePeerId);
+      });
     });
 
     newPeer.on("connect", () => {
-      useDBStatus.getState().setConnectState((isMaster, isConnect) => {
-        if (!isMaster) {
-          newPeer.send(encode({ peerId, type: "reqSync" }));
+      useNetworkStatus.getState().setPeers((CurrentPeers, isKIOSK) => {
+        if (isKIOSK) {
+          newPeer.send(encode({ peerId, action: "reqSync" }));
           unsubscribeFirestore();
           deleteDoc(doc(_room, peerId, "peers", remotePeerId));
           deleteDoc(doc(_room, peerId));
           deleteDoc(doc(_room, remotePeerId, "peers", peerId));
         }
-        return isMaster ? new Set([...isConnect, remotePeerId]) : true;
+        return CurrentPeers.set(remotePeerId, "");
       });
     });
     if (offer) newPeer.signal(offer);
   };
 
-  //init alreadt connection
-  await getDocs(_room).then(({ docs: _docs }) => {
-    console.log("DOCS", _docs);
-    const isMaster = (_docs?.length ?? 0) === 0;
-    useDBStatus.getState().setMaster(isMaster);
-    if (!isMaster) {
+  // //init alreadt connection
+  // await getDocs(_room).then(({ docs: _docs }) => {
+  //   console.log("DOCS", _docs);
+  //   const isManager = (_docs?.length ?? 0) === 0;
+  //   useNetworkStatus.getState().setPeers(isManager);
+  //   if (!isManager) {
+  //     _docs.forEach((__doc) => {
+  //       if (__doc.data()?.isMaster) setPeer(__doc.id);
+  //     });
+  //   } else {
+  //     setDoc(doc(_room, peerId), { isMaster: true });
+  //     workerPipe({ id: Date.now(), action: "init" });
+  //   }
+  // });
+  if (asKiosk) {
+    await getDocs(_room).then(({ docs: _docs }) => {
       _docs.forEach((__doc) => {
         if (__doc.data()?.isMaster) setPeer(__doc.id);
       });
-    } else {
-      setDoc(doc(_room, peerId), { isMaster: true });
-      workerPipe({ id: Date.now(), action: "init" });
-    }
-  });
+    });
+  } else {
+    await getDocs(_room).then(({ docs: _docs }) => {
+      _docs.forEach((__doc) => deleteDoc(__doc.ref));
+    });
+    setDoc(doc(_room, peerId), { isMaster: true });
+    // workerPipe({ id: Date.now(), action: "init" });
+  }
 
   const unsubscribeFirestore = onSnapshot(_peers, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
@@ -110,13 +133,24 @@ export async function getConnectionHandlerSimplePeer(site, topic, workerPipe) {
 
   const handler = {
     send(message) {
-      const msg = !message.buffer ? encode(message) : message;
+      const msg = !message.buffer ? encode({ ...message, peerId }) : message;
       for (let peer of peers.values()) {
         peer.send(msg);
       }
     },
     sendPeer(message, peerId) {
-      peers.get(peerId)?.send(!message.buffer ? encode(message) : message);
+      peers
+        .get(peerId)
+        ?.send(!message.buffer ? encode({ ...message, peerId }) : message);
+    },
+    sendSelf({ id, action, peerId, data }) {
+      const msg = {
+        id,
+        action,
+        peerId: peerId ?? "$$self",
+        data: data ? (!data.buffer ? encode(data) : data) : undefined,
+      };
+      workerPipe(msg, msg.data ? [msg.data.buffer] : undefined);
     },
     destroy() {
       unsubscribeFirestore();

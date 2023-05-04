@@ -1,6 +1,9 @@
 /* eslint-disable no-restricted-globals */
 import { decode, encode } from "cbor-x";
 import { db } from "./db.index";
+import { fetch } from "../plugin/fetch";
+import { serverURL } from "../urls";
+import { authToken } from "../store";
 
 const mapFuncs = {
   sync: (data) => {
@@ -11,7 +14,7 @@ const mapFuncs = {
   },
   reqSync: async () => {
     return {
-      type: "sync",
+      action: "sync",
       data: {
         contractor: await db.contractor.toArray(),
         apartment: await db.apartment.toArray(),
@@ -24,34 +27,61 @@ const mapFuncs = {
 
     db.table(_data.table).put(_data.row);
   },
+  get: (data) => {
+    const _data = decode(data);
+
+    db.table(_data.table).get(_data.row);
+  },
+  visitLog: async (data) => {
+    const _data = decode(data);
+    const resp = await fetch(serverURL.visit, _data)
+      .then((resp) => resp.data)
+      .catch(() => {
+        db.failureVisit.put({ ...data, created_date: Date.now() });
+      });
+    return {
+      action: "recieve-visit",
+      data: resp,
+    };
+  },
   init: async () => {
-    await db.contractor.bulkPut([
-      { phone: "01025765914", name: "김다범" },
-      { phone: "01027725914", name: "김다범2" },
-    ]);
-    await db.apartment.bulkPut([
-      {
-        building_room: "101-101",
-        building: "101",
-        room: "101",
-        password: [1111, 2222],
-      },
-      {
-        building_room: "101-102",
-        building: "101",
-        room: "102",
-        password: [3333, 4444],
-      },
-    ]);
-    await db.m2m.bulkPut([
-      { id: 1, contractor_id: "01025765914", apartment_id: "101-101" },
-      { id: 2, contractor_id: "01025765914", apartment_id: "101-102" },
-      { id: 3, contractor_id: "01027725914", apartment_id: "101-102" },
-    ]);
+    // authToken.current = decode(data).token;
+    const resp = await fetch(serverURL.get_apart);
+
+    const _data = resp.data;
+    const _dataSize = _data.length;
+    if (_dataSize < 1) return;
+
+    const apart = new Array(_dataSize);
+    const contractor = new Array(_dataSize);
+    const apart_contractor = new Array(_dataSize);
+
+    for (let i = 0, row; i < _dataSize; i++) {
+      row = _data[i];
+      apart[i] = {
+        building_room: row.apartment_id,
+        building: row.apartment__building,
+        room: row.apartment__room,
+        password: row.apartment__password,
+      };
+      contractor[i] = {
+        phone: row.contractor_id,
+        name: row.contractor__name,
+      };
+      apart_contractor[i] = {
+        id: row.id,
+        contractor_id: row.contractor_id,
+        apartment_id: row.apartment_id,
+      };
+    }
+    await db.apartment.bulkPut(apart);
+    await db.contractor.bulkPut(contractor);
+    await db.m2m.bulkPut(apart_contractor);
 
     return "done";
-
-    //   const ws = new WebSocket("wss://localhost:8001/ws");
+  },
+  token: (data) => {
+    authToken.current = decode(data).token;
   },
   // get connect() {
   //   return async ({ site, topic }) => {
@@ -72,6 +102,6 @@ const mapFuncs = {
 self.onmessage = async ({ data }) => {
   const { id, action, peerId, data: _data } = data;
   const result = await mapFuncs[action](_data);
-  const msg = { id, peerId, result: encode(result) };
-  self.postMessage(msg, [msg.result.buffer]);
+  const msg = { id, peerId, result: result ? encode(result) : undefined };
+  self.postMessage(msg, msg.result ? [msg.result.buffer] : undefined);
 };

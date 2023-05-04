@@ -32,6 +32,7 @@ module.exports = {
     config.resolve.fallback = {
       util: require.resolve("util/"),
       buffer: require.resolve("buffer"),
+      fs: false,
     };
     config.plugins.push(
       new ProvidePlugin({
