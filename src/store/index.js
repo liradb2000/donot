@@ -86,7 +86,7 @@ export const useMisc = create(
 );
 
 export const usePrints = create((set) => ({
-  printDevice: immuMap({ "sarwed-sqdas": { v: "test" } }),
+  printDevice: immuMap(),
   setPrintDevice: (v) => {
     const _id = nanoid();
     set(({ printDevice }) => ({ printDevice: printDevice.set(_id, v) }));
@@ -104,6 +104,8 @@ export const useNetworkStatus = create((set) => ({
   rtc: undefined,
   peers: immuMap(),
   site: {},
+  dbWorker: undefined,
+  online: false,
   setRole: (v) => {
     set({ role: v });
   },
@@ -121,6 +123,12 @@ export const useNetworkStatus = create((set) => ({
   },
   setSite: (v) => {
     set({ site: v });
+  },
+  setDBWorker: (v) => {
+    set({ dbWorker: v });
+  },
+  setOnline: (v) => {
+    set({ online: v });
   },
 }));
 

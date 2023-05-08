@@ -1,4 +1,5 @@
 import {
+  IconButton,
   buttonBaseClasses,
   listItemButtonClasses,
   listItemClasses,
@@ -6,10 +7,17 @@ import {
   styled,
   typographyClasses,
 } from "@mui/material";
-import { useUISettings } from "../../../store";
+import { useNetworkStatus, useUISettings } from "../../../store";
 import { shallow } from "zustand/shallow";
 import { pure_prefix } from "../../../urls";
 import { ErrorDialogComponent } from "../Diag";
+import {
+  Api as ApiIcon,
+  CloudOffline,
+  NetworkOverlay,
+} from "@carbon/icons-react";
+import { useState } from "react";
+import { AdminSetupPage } from "../AdminSetup";
 
 const BackgroundDiv = styled("div")(({ theme }) => ({
   position: "absolute",
@@ -137,7 +145,48 @@ const BackgroundDiv = styled("div")(({ theme }) => ({
       },
     },
   },
+  [`& > .version-button`]: {
+    position: "fixed",
+    bottom: theme.spacing(2),
+    right: theme.spacing(2),
+    zIndex: 9999,
+    [`& > .${typographyClasses.caption}`]: {
+      color: theme.palette.text.disabled,
+    },
+  },
+  [`& > .status-container`]: {
+    display: "inline-flex",
+    position: "fixed",
+    top: theme.spacing(2),
+    right: theme.spacing(2),
+  },
 }));
+
+function StatusContainer() {
+  const [rtc, peers, online] = useNetworkStatus((state) => [
+    state.rtc,
+    state.peers,
+    state.online,
+  ]);
+  const [err, setErr] = useState();
+  const [loading, setLoading] = useState(false);
+
+  async function netBootstrap(e) {
+    setLoading(true);
+    await rtc.reconnect();
+    setLoading(false);
+  }
+  return (
+    <div className="status-container">
+      <IconButton disabled={peers.size > 0} onClick={netBootstrap}>
+        <ApiIcon />
+      </IconButton>
+      <IconButton disabled={true}>
+        {online ? <NetworkOverlay /> : <CloudOffline />}
+      </IconButton>
+    </div>
+  );
+}
 export function KioskWrapper({ children }) {
   const [bgPattern, bgColor, logo] = useUISettings(
     (state) => [state.bgPattern, state.bgColor, state.logo],
@@ -157,6 +206,8 @@ export function KioskWrapper({ children }) {
         {children}
       </div>
       <ErrorDialogComponent />
+      <StatusContainer />
+      <AdminSetupPage />
     </BackgroundDiv>
   );
 }

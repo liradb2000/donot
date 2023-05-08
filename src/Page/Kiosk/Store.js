@@ -8,6 +8,7 @@ export const useContractorPrivate = create((set) => ({
   apartment_room: undefined,
   apartment_password: undefined,
   visit: undefined,
+  sms: false,
   setContractor: (v) => {
     set({
       contractor_id: v.phone,
@@ -22,6 +23,9 @@ export const useContractorPrivate = create((set) => ({
       apartment_password: v.password,
     });
   },
+  setSMS: (v) => {
+    set({ sms: v });
+  },
   clear: () => {
     set({
       contractor_id: undefined,
@@ -31,6 +35,7 @@ export const useContractorPrivate = create((set) => ({
       apartment_room: undefined,
       apartment_password: undefined,
       visit: undefined,
+      sms: false,
     });
   },
 }));

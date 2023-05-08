@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import {
   authToken,
+  setPageIdx,
   useMisc,
   useNetworkStatus,
   usePrints,
@@ -126,7 +127,7 @@ function KioskSection() {
     rtcHandler.sendPeer({ action: "blink" }, k);
   };
   const handleSync = (k) => () => {
-    rtcHandler.sendSelf({ id: Date.now(), action: "reqSync", peerId: k });
+    // rtcHandler.sendSelf({ id: Date.now(), action: "reqSync", peerId: k });
   };
   function handleSyncSettings() {
     const templateStore = useTemplates.getState();
@@ -254,6 +255,22 @@ function RetriveServer() {
       }),
     ]);
   }
+  function handleClickDestroy() {
+    rtc.sendSelf({ id: Date.now(), action: "destroy" });
+    rtc.destroy();
+    localStorage.removeItem("misc-storage");
+    localStorage.removeItem("template-storage");
+    localStorage.removeItem("ui-storage");
+    localStorage.removeItem("token");
+    setPageIdx("Login");
+  }
+  function handleTest() {
+    rtc.sendSelf({
+      id: Date.now(),
+      action: "init",
+    });
+    // socket.send("init");
+  }
   return (
     <Fragment>
       <ListSubheader>서버</ListSubheader>
@@ -266,6 +283,14 @@ function RetriveServer() {
         <Button disabled={disabled} onClick={handleClickRetriveSettings}>
           설정 정보 받아오기
         </Button>
+      </ListItem>
+      <ListItem>
+        <Button onClick={handleClickDestroy}>
+          오프라인 데이터 지우기 (종료)
+        </Button>
+      </ListItem>
+      <ListItem>
+        <Button onClick={handleTest}>테스트</Button>
       </ListItem>
     </Fragment>
   );

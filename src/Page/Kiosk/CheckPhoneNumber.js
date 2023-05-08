@@ -5,6 +5,7 @@ import NumberPad from "./Component/NumberPad";
 import { db } from "../../DB/db.index";
 import { useContractorPrivate } from "./Store";
 import { setPageIdx } from "../../store";
+import { useErrorState } from "./Diag";
 // const store = new Map([["isTablet", true]]);
 export function CheckPhoneNumberPage() {
   // const { state } = useLocation();
@@ -16,6 +17,12 @@ export function CheckPhoneNumberPage() {
       .then((v) => useContractorPrivate.getState().setContractor(v))
       .then(() => {
         setPageIdx("Kiosk/SelectApartment");
+      })
+      .catch(() => {
+        useErrorState.setState({
+          title: "오류",
+          msg: "등록된 전화번호가 없습니다.",
+        });
       });
     // fetchWithoutAuth(
     //   "/client/tablet/",
