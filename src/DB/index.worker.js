@@ -58,9 +58,11 @@ const mapFuncs = {
     // console.log("synckiosk",_data)
 
     if ((_data.failureVisit?.length ?? 0) > 0) {
-      db.failureVisit.bulkPut(
-        _data.failureVisit.map((i) => ({ ...i, id: undefined }))
-      );
+      await fetch(serverURL.add_visits, _data.failureVisit).catch(() => {
+        db.failureVisit.bulkPut(
+          _data.failureVisit.map((i) => ({ ...i, id: undefined }))
+        );
+      });
     }
     if (_data.logLatestID === "init") {
       return {
@@ -185,6 +187,14 @@ const mapFuncs = {
       created_date: Date.now() / 1000,
     });
   },
+  sendVisit: async () => {
+    const curData = await db.failureVisit.toArray();
+    if (curData.length > 0)
+      await fetch(serverURL.add_visits, curData).then(async () => {
+        await Promise.all(curData.map((i) => db.failureVisit.delete(i.id)));
+      });
+  },
+
   // get connect() {
   //   return async ({ site, topic }) => {
   //     console.log(site, topic);

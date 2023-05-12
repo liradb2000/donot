@@ -14,6 +14,19 @@ import {
 import { setPageIdx, useNetworkStatus, usePrints } from "../../store";
 import { Close } from "@carbon/icons-react";
 import { shallow } from "zustand/shallow";
+import { db } from "../../DB/db.index";
+
+function FailureButton() {
+  const [size, setSize] = useState(0);
+  async function handleClick() {
+    setSize(await db.failureVisit.count());
+  }
+  return (
+    <ListItem>
+      <Button onClick={handleClick}>{`방문자-실패 [ ${size} ]`}</Button>
+    </ListItem>
+  );
+}
 
 export function AdminSetupPage() {
   const [open, setOpen] = useState(false);
@@ -97,6 +110,7 @@ export function AdminSetupPage() {
             오프라인 데이터 지우기 (종료)
           </Button>
         </ListItem>
+        <FailureButton />
       </Dialog>
     </Fragment>
   );

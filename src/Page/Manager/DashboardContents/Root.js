@@ -28,11 +28,12 @@ import {
   Renew,
 } from "@carbon/icons-react";
 import { shallow } from "zustand/shallow";
-import { Fragment, useMemo } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Cut, Text, render } from "react-thermal-printer";
 import { nanoid } from "nanoid";
 import { fetch } from "../../../plugin/fetch";
 import { serverURL } from "../../../urls";
+import { db } from "../../../DB/db.index";
 
 function PrintSection() {
   const [devices, addDevice, delDevice] = usePrints(
@@ -217,6 +218,36 @@ function KioskSection() {
   );
 }
 
+function FailureButton() {
+  const [loading, setLoading] = useState(false);
+  const [size, setSize] = useState(0);
+  async function handleClick() {
+    setSize(await db.failureVisit.count());
+  }
+  async function handleUpload() {
+    setLoading(true);
+    const curData = await db.failureVisit.toArray();
+    if (curData.length > 0)
+      await fetch(serverURL.add_visits, curData)
+        .then(async () => {
+          await Promise.all(curData.map((i) => db.failureVisit.delete(i.id)));
+          handleClick();
+        })
+        .finally(() => setLoading(false));
+    else setLoading(false);
+  }
+  return (
+    <Fragment>
+      <ListItem>
+        <Button onClick={handleClick}>{`방문자-실패 [ ${size} ]`}</Button>
+      </ListItem>
+      <ListItem>
+        <Button onClick={handleUpload}>{`방문자-업로드`}</Button>
+      </ListItem>
+    </Fragment>
+  );
+}
+
 function RetriveServer() {
   const [socket, rtc] = useNetworkStatus(
     (state) => [state.socket, state.rtc],
@@ -292,6 +323,7 @@ function RetriveServer() {
       <ListItem>
         <Button onClick={handleTest}>테스트</Button>
       </ListItem>
+      <FailureButton />
     </Fragment>
   );
 }

@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-globals */
 const url_prefix =
   process.env.NODE_ENV === "production"
     ? "/api/staff"
@@ -27,6 +28,11 @@ export const serverURL = {
   },
   visit: {
     url: `${url_prefix}/log/visit/`,
+    method: "post",
+    auth: true,
+  },
+  add_visits: {
+    url: `${url_prefix}/add/visit/`,
     method: "post",
     auth: true,
   },

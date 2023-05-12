@@ -15,6 +15,7 @@ import { useNetworkStatus } from "../../store";
 import { shallow } from "zustand/shallow";
 import { RootPage } from "./DashboardContents/Root";
 import { worker2socket } from "../Connector";
+import { ws_url } from "../../urlsWS";
 
 const StyledDiv = styled("div")(({ theme }) => ({
   height: "100%",
@@ -41,7 +42,7 @@ export function DashboardPage() {
   );
 
   function handleReConnect() {
-    const _socket = new WebSocket("wss://localhost:8000/ws/");
+    const _socket = new WebSocket(ws_url);
     _socket.onclose = () => {
       rtc.send({
         action: "netOnline",
@@ -54,6 +55,7 @@ export function DashboardPage() {
         action: "netOnline",
         data: { online: true },
       });
+      dbWorker.postMessage({ id: Date.now(), action: "sendVisit" });
       setSocket(_socket);
     };
     _socket.onmessage = ({ data }) => {
