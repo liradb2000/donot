@@ -87,13 +87,23 @@ export const useMisc = create(
 
 export const usePrints = create((set) => ({
   printDevice: immuMap(),
+  alias: immuMap(),
   setPrintDevice: (v) => {
     const _id = nanoid();
-    set(({ printDevice }) => ({ printDevice: printDevice.set(_id, v) }));
+    set(({ printDevice, alias }) => ({
+      printDevice: printDevice.set(_id, v),
+      alias: alias.set(_id, _id),
+    }));
     return _id;
   },
   delPrintDevice: (v) => {
-    set(({ printDevice }) => set({ printDevice: printDevice.remove(v) }));
+    set(({ printDevice, alias }) => ({
+      printDevice: printDevice.remove(v),
+      alias: alias.remove(v),
+    }));
+  },
+  setAlias: (_id, v) => {
+    set(({ alias }) => ({ alias: alias.set(_id, v) }));
   },
 }));
 
@@ -106,6 +116,7 @@ export const useNetworkStatus = create((set) => ({
   site: {},
   dbWorker: undefined,
   online: false,
+  alias: immuMap(),
   setRole: (v) => {
     set({ role: v });
   },
@@ -115,8 +126,11 @@ export const useNetworkStatus = create((set) => ({
   setRtc: (v) => {
     set({ rtc: v });
   },
-  setPeers: (v) => {
-    set(({ role, peers }) => ({ peers: v(peers, role) }));
+  setPeers: (v, v2) => {
+    set(({ role, peers, alias }) => ({
+      peers: v(peers, role),
+      alias: v2?.(alias) ?? alias,
+    }));
   },
   setPeer2Printer: (k, v) => {
     set(({ peers }) => ({ peers: peers.set(k, v) }));
@@ -130,6 +144,7 @@ export const useNetworkStatus = create((set) => ({
   setOnline: (v) => {
     set({ online: v });
   },
+  setAlias: (_id, v) => set(({ alias }) => ({ alias: alias.set(_id, v) })),
 }));
 
 export const usePage = create((set) => ({

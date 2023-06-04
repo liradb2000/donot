@@ -9,6 +9,7 @@ import {
   ListSubheader,
   MenuItem,
   Select,
+  TextField,
 } from "@mui/material";
 import {
   authToken,
@@ -22,38 +23,49 @@ import {
 import {
   Add,
   AddAlt,
+  Checkmark,
   Close,
   CloudAuditing,
+  Edit,
   Printer,
   Renew,
 } from "@carbon/icons-react";
 import { shallow } from "zustand/shallow";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { Cut, Text, render } from "react-thermal-printer";
-import { nanoid } from "nanoid";
 import { fetch } from "../../../plugin/fetch";
 import { serverURL } from "../../../urls";
 import { db } from "../../../DB/db.index";
 
 function PrintSection() {
-  const [devices, addDevice, delDevice] = usePrints(
-    (state) => [state.printDevice, state.setPrintDevice, state.delPrintDevice],
+  const inputRef = useRef();
+  const [editAlias, setEditAlias] = useState();
+  const [devices, alias, addDevice, delDevice, setAlias] = usePrints(
+    (state) => [
+      state.printDevice,
+      state.alias,
+      state.setPrintDevice,
+      state.delPrintDevice,
+      state.setAlias,
+    ],
     shallow
   );
-  function handleAddDevice() {
-    let pDevice;
-    navigator.usb
-      .requestDevice({ filters: [] })
-      .then((selectedDevice) => {
-        pDevice = selectedDevice;
-        return pDevice.open();
-      })
-      .then(() => pDevice.selectConfiguration(1))
-      .then(() => pDevice.claimInterface(0))
-      .then(() => addDevice(pDevice))
-      .catch((e) => {
-        console.error(e);
-      });
+  async function handleAddDevice() {
+    try {
+      const pDevice = await navigator.usb.requestDevice({ filters: [] });
+      pDevice.onconnect = () => {
+        addDevice(pDevice);
+      };
+      pDevice.ondisconnect = () => {
+        delDevice(pDevice);
+      };
+      await pDevice.open();
+      await pDevice.selectConfiguration(1);
+      await pDevice.claimInterface(0);
+      // addDevice(pDevice);
+    } catch (e) {
+      console.error(e);
+    }
   }
   const handlePrintTest = (k) => async () => {
     const _data = await render(
@@ -66,10 +78,20 @@ function PrintSection() {
     if (!_data || !printer) return;
     printer.transferOut(2, _data);
   };
+
+  const handleEditAlias = (k) => () => {
+    setEditAlias(k);
+  };
+
+  const handleSetAlias = (k) => () => {
+    const _alias = (inputRef.current.value ?? "").trim();
+    if (_alias !== "") setAlias(k, _alias);
+  };
+
   return (
     <Fragment>
       <ListSubheader>
-        <ListItemText primary="프린트" />
+        <ListItemText primary="프린트" sx={{ mt: 2 }} />
         <ListItemSecondaryAction>
           <IconButton onClick={handleAddDevice}>
             <AddAlt />
@@ -78,24 +100,40 @@ function PrintSection() {
       </ListSubheader>
       {devices.keySeq().map((k) => (
         <ListItem>
-          <ListItemText primary={k} />
-          <ListItemSecondaryAction>
-            <ButtonGroup>
-              <IconButton onClick={handlePrintTest(k)}>
-                <Printer />
+          {editAlias === k ? (
+            <TextField
+              variant="standard"
+              defaultValue={alias.get(k)}
+              inputRef={inputRef}
+            />
+          ) : (
+            <ListItemText primary={alias.get(k)} />
+          )}
+          {editAlias === k ? (
+            <ListItemSecondaryAction>
+              <IconButton onClick={handleSetAlias(k)}>
+                <Checkmark />
               </IconButton>
-              <IconButton>
-                <Close />
-              </IconButton>
-            </ButtonGroup>
-          </ListItemSecondaryAction>
+            </ListItemSecondaryAction>
+          ) : (
+            <ListItemSecondaryAction>
+              <ButtonGroup>
+                <IconButton onClick={handlePrintTest(k)}>
+                  <Printer />
+                </IconButton>
+                <IconButton onClick={handleEditAlias(k)}>
+                  <Edit />
+                </IconButton>
+              </ButtonGroup>
+            </ListItemSecondaryAction>
+          )}
         </ListItem>
       ))}
     </Fragment>
   );
 }
 
-function PrintSelector({ devices, value, onChange }) {
+function PrintSelector({ devices, alias, value, onChange }) {
   return (
     <Select
       size="small"
@@ -107,18 +145,30 @@ function PrintSelector({ devices, value, onChange }) {
     >
       <MenuItem value={""}>None</MenuItem>
       {devices.keySeq().map((k) => (
-        <MenuItem value={k}>{k}</MenuItem>
+        <MenuItem value={k}>{alias.get(k)}</MenuItem>
       ))}
     </Select>
   );
 }
 
 function KioskSection() {
-  const [rtcHandler, peersId, setPeer2Printer] = useNetworkStatus(
-    (state) => [state.rtc, state.peers, state.setPeer2Printer],
+  const inputRef = useRef();
+  const [editAlias, setEditAlias] = useState();
+  const [rtcHandler, peersId, peerAlias, setPeer2Printer, setPeerAlias] =
+    useNetworkStatus(
+      (state) => [
+        state.rtc,
+        state.peers,
+        state.alias,
+        state.setPeer2Printer,
+        state.setAlias,
+      ],
+      shallow
+    );
+  const [devices, alias] = usePrints(
+    (state) => [state.printDevice, state.alias],
     shallow
   );
-  const devices = usePrints((state) => state.printDevice, shallow);
 
   const handleChangePrintSelector = (k) => (e) => {
     const val = e.target.value;
@@ -127,8 +177,13 @@ function KioskSection() {
   const handleBlink = (k) => () => {
     rtcHandler.sendPeer({ action: "blink" }, k);
   };
-  const handleSync = (k) => () => {
-    // rtcHandler.sendSelf({ id: Date.now(), action: "reqSync", peerId: k });
+  const handleEditAlias = (k) => () => {
+    setEditAlias(k);
+  };
+
+  const handleSetAlias = (k) => () => {
+    const _alias = (inputRef.current.value ?? "").trim();
+    if (_alias !== "") setPeerAlias(k, _alias);
   };
   function handleSyncSettings() {
     const templateStore = useTemplates.getState();
@@ -168,7 +223,7 @@ function KioskSection() {
   return (
     <Fragment>
       <ListSubheader>
-        <ListItemText primary="키오스크" />
+        <ListItemText primary="키오스크" sx={{ mt: 2 }} />
         <ListItemSecondaryAction>
           <IconButton onClick={handleSyncSettings}>
             <Renew />
@@ -177,26 +232,43 @@ function KioskSection() {
       </ListSubheader>
       {peersId.entrySeq().map(([k, v]) => (
         <ListItem>
-          <ListItemText
-            primary={k}
-            secondary={
-              <PrintSelector
-                devices={devices}
-                value={v}
-                onChange={handleChangePrintSelector(k)}
-              />
-            }
-          />
-          <ListItemSecondaryAction>
-            <ButtonGroup>
-              <IconButton onClick={handleSync(k)}>
-                <Renew />
+          {editAlias === k ? (
+            <TextField
+              variant="standard"
+              defaultValue={peerAlias.get(k)}
+              inputRef={inputRef}
+            />
+          ) : (
+            <ListItemText
+              primary={peerAlias.get(k)}
+              secondary={
+                <PrintSelector
+                  devices={devices}
+                  alias={alias}
+                  value={v}
+                  onChange={handleChangePrintSelector(k)}
+                />
+              }
+            />
+          )}
+          {editAlias === k ? (
+            <ListItemSecondaryAction>
+              <IconButton onClick={handleSetAlias(k)}>
+                <Checkmark />
               </IconButton>
-              <IconButton onClick={handleBlink(k)}>
-                <CloudAuditing />
-              </IconButton>
-            </ButtonGroup>
-          </ListItemSecondaryAction>
+            </ListItemSecondaryAction>
+          ) : (
+            <ListItemSecondaryAction>
+              <ButtonGroup>
+                <IconButton onClick={handleBlink(k)}>
+                  <CloudAuditing />
+                </IconButton>
+                <IconButton onClick={handleEditAlias(k)}>
+                  <Edit />
+                </IconButton>
+              </ButtonGroup>
+            </ListItemSecondaryAction>
+          )}
         </ListItem>
       ))}
       {/* {peersId.keySeq().map((k) => (
@@ -254,38 +326,38 @@ function RetriveServer() {
     shallow
   );
   const disabled = useMemo(() => !socket, [socket]);
-  function handleClickRetrive() {
-    console.log("MAIN", authToken.current);
-    rtc.sendSelf({
-      id: Date.now(),
-      action: "init",
-    });
-    // socket.send(JSON.stringify({ id: Date.now(), action: "get_contractor" }));
-  }
-  function handleClickRetriveSettings() {
-    Promise.all([
-      fetch(serverURL.get_settings, { key: "component_client" }).then(
-        (resp) => {
-          useUISettings.getState().setup(resp.data.value);
-        }
-      ),
-      fetch(serverURL.get_settings, { key: "check" }).then((resp) => {
-        useTemplates.getState().setAgreement(resp.data.value);
-      }),
-      fetch(serverURL.get_settings, { key: "visit" }).then((resp) => {
-        useTemplates.getState().setVisit(resp.data.value);
-      }),
-      fetch(serverURL.get_settings, { key: "print" }).then((resp) => {
-        useTemplates.getState().setPrint(resp.data.value);
-      }),
-      fetch(serverURL.get_settings, { key: "building-info" }).then((resp) => {
-        useMisc.setState({ apartment: resp.data.value });
-      }),
-      fetch(serverURL.get_settings, { key: "day" }).then((resp) => {
-        useMisc.setState({ day: resp.data.value });
-      }),
-    ]);
-  }
+  // function handleClickRetrive() {
+  //   console.log("MAIN", authToken.current);
+  //   rtc.sendSelf({
+  //     id: Date.now(),
+  //     action: "init",
+  //   });
+  //   // socket.send(JSON.stringify({ id: Date.now(), action: "get_contractor" }));
+  // }
+  // function handleClickRetriveSettings() {
+  //   Promise.all([
+  //     fetch(serverURL.get_settings, { key: "component_client" }).then(
+  //       (resp) => {
+  //         useUISettings.getState().setup(resp.data.value);
+  //       }
+  //     ),
+  //     fetch(serverURL.get_settings, { key: "check" }).then((resp) => {
+  //       useTemplates.getState().setAgreement(resp.data.value);
+  //     }),
+  //     fetch(serverURL.get_settings, { key: "visit" }).then((resp) => {
+  //       useTemplates.getState().setVisit(resp.data.value);
+  //     }),
+  //     fetch(serverURL.get_settings, { key: "print" }).then((resp) => {
+  //       useTemplates.getState().setPrint(resp.data.value);
+  //     }),
+  //     fetch(serverURL.get_settings, { key: "building-info" }).then((resp) => {
+  //       useMisc.setState({ apartment: resp.data.value });
+  //     }),
+  //     fetch(serverURL.get_settings, { key: "day" }).then((resp) => {
+  //       useMisc.setState({ day: resp.data.value });
+  //     }),
+  //   ]);
+  // }
   function handleClickDestroy() {
     rtc.sendSelf({ id: Date.now(), action: "destroy" });
     rtc.destroy();
@@ -305,7 +377,7 @@ function RetriveServer() {
   return (
     <Fragment>
       <ListSubheader>서버</ListSubheader>
-      <ListItem>
+      {/* <ListItem>
         <Button disabled={disabled} onClick={handleClickRetrive}>
           계약 정보 받아오기
         </Button>
@@ -314,14 +386,16 @@ function RetriveServer() {
         <Button disabled={disabled} onClick={handleClickRetriveSettings}>
           설정 정보 받아오기
         </Button>
+      </ListItem> */}
+      <ListItem>
+        <Button disabled={disabled} onClick={handleTest}>
+          실시간 정보 반영
+        </Button>
       </ListItem>
       <ListItem>
         <Button onClick={handleClickDestroy}>
           오프라인 데이터 지우기 (종료)
         </Button>
-      </ListItem>
-      <ListItem>
-        <Button onClick={handleTest}>테스트</Button>
       </ListItem>
       <FailureButton />
     </Fragment>
