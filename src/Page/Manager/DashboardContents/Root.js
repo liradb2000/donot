@@ -219,6 +219,7 @@ function KioskSection() {
       data: {
         day: miscStore.day,
         apartment: miscStore.apartment,
+        smsenabled: miscStore.smsenabled,
       },
     });
   }

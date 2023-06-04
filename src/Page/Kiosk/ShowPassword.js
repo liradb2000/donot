@@ -46,8 +46,8 @@ export function ShwoPasswordPage() {
       ],
       shallow
     );
-  const [day, apartMisc] = useMisc(
-    (state) => [state.day, state.apartment],
+  const [day, apartMisc, smsenabled] = useMisc(
+    (state) => [state.day, state.apartment, state.smsenabled],
     shallow
   );
   const data = useMemo(
@@ -222,7 +222,7 @@ export function ShwoPasswordPage() {
       <ClientSideRenderer template={template} data={data} />
       <Stack alignItems="center" spacing={1}>
         <ButtonGroup>
-          {peers.size > 0 && online && (
+          {smsenabled && peers.size > 0 && online && (
             <Button
               data-item="sms"
               className="minWidth"

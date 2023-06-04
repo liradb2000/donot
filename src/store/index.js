@@ -77,6 +77,7 @@ export const useMisc = create(
     (set) => ({
       day: 0,
       apartment: {},
+      smsenabled: false,
     }),
     {
       name: "misc-storage", // unique name

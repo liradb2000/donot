@@ -143,6 +143,7 @@ export async function getConnectionHandlerSimplePeer(
                 data: {
                   day: miscStore.day,
                   apartment: miscStore.apartment,
+                  smsenabled: miscStore.smsenabled,
                 },
               })
             );

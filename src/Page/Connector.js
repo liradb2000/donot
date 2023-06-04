@@ -61,6 +61,9 @@ export const setupFunc = {
   "settings-day": (data) => {
     useMisc.setState({ day: Number(data) });
   },
+  "settings-smsenabled": (data) => {
+    useMisc.setState({ smsenabled: `${data}` === "true" });
+  },
   "settings-building-info": (data) => {
     useMisc.setState({ apartment: JSON.parse(data) });
   },
@@ -167,6 +170,9 @@ export function worker2socket(socket, rtcHandler) {
         }),
         fetch(serverURL.get_settings, { key: "day" }).then((resp) => {
           useMisc.setState({ day: resp.data.value });
+        }),
+        fetch(serverURL.get_settings, { key: "smsenabled" }).then((resp) => {
+          useMisc.setState({ smsenabled: `${resp.data.value}` === "true" });
         }),
       ]).then(() => {
         socket.send(_data.logID);
