@@ -86,6 +86,7 @@ function PrintSection() {
   const handleSetAlias = (k) => () => {
     const _alias = (inputRef.current.value ?? "").trim();
     if (_alias !== "") setAlias(k, _alias);
+    setEditAlias(undefined);
   };
 
   return (
@@ -184,6 +185,7 @@ function KioskSection() {
   const handleSetAlias = (k) => () => {
     const _alias = (inputRef.current.value ?? "").trim();
     if (_alias !== "") setPeerAlias(k, _alias);
+    setEditAlias(undefined);
   };
   function handleSyncSettings() {
     const templateStore = useTemplates.getState();
