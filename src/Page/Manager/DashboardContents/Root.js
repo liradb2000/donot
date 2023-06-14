@@ -53,16 +53,16 @@ function PrintSection() {
   async function handleAddDevice() {
     try {
       const pDevice = await navigator.usb.requestDevice({ filters: [] });
-      pDevice.onconnect = () => {
-        addDevice(pDevice);
-      };
-      pDevice.ondisconnect = () => {
-        delDevice(pDevice);
-      };
+      // pDevice.onconnect = () => {
+      //   addDevice(pDevice);
+      // };
       await pDevice.open();
       await pDevice.selectConfiguration(1);
       await pDevice.claimInterface(0);
-      // addDevice(pDevice);
+      addDevice(pDevice);
+      pDevice.ondisconnect = () => {
+        delDevice(pDevice);
+      };
     } catch (e) {
       console.error(e);
     }
