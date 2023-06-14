@@ -105,7 +105,7 @@ export function ShwoPasswordPage() {
       msg: "성공적으로 인쇄하였습니다.",
       timer: [() => setPageIdx("Kiosk/Agreement"), 10],
       actions:
-        peers.size > 0 && online
+        smsenabled && peers.size > 0 && online
           ? [
               [
                 "문자전송",
